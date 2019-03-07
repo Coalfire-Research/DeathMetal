@@ -1,0 +1,109 @@
+REM Draws a skull in notepad
+GUI r
+DELAY 250
+STRING notepad.exe
+ENTER
+
+DELAY 250
+STRING                               ...----....
+ENTER
+STRING                         ..-:"''         ''"-..
+ENTER
+STRING                      .-'                      '-.
+ENTER
+STRING                    .'              .     .       '.
+ENTER
+STRING                  .'   .          .    .      .    .''.
+ENTER
+STRING                .'  .    .       .   .   .     .   . ..:.
+ENTER
+STRING              .' .   . .  .       .   .   ..  .   . ....::.
+ENTER
+STRING             ..   .   .      .  .    .     .  ..  . ....:IA.
+ENTER
+STRING            .:  .   .    .    .  .  .    .. .  .. .. ....:IA.
+ENTER
+STRING           .: .   .   ..   .    .     . . .. . ... ....:.:VHA.
+ENTER
+STRING           '..  .  .. .   .       .  . .. . .. . .....:.::IHHB.
+ENTER
+STRING          .:. .  . .  . .   .  .  . . . ...:.:... .......:HIHMM.
+ENTER
+STRING         .:.... .   . ."::"'.. .   .  . .:.:.:II;,. .. ..:IHIMMA
+ENTER
+STRING         ':.:..  ..::IHHHHHI::. . .  ...:.::::.,,,. . ....VIMMHM
+ENTER
+STRING        .:::I. .AHHHHHHHHHHAI::. .:...,:IIHHHHHHMMMHHL:. . VMMMM
+ENTER
+STRING       .:.:V.:IVHHHHHHHMHMHHH::..:" .:HIHHHHHHHHHHHHHMHHA. .VMMM.
+ENTER
+STRING       :..V.:IVHHHHHMMHHHHHHHB... . .:VPHHMHHHMMHHHHHHHHHAI.:VMMI
+ENTER
+STRING       ::V..:VIHHHHHHMMMHHHHHH. .   .I":IIMHHMMHHHHHHHHHHHAPI:WMM
+ENTER
+STRING       ::". .:.HHHHHHHHMMHHHHHI.  . .:..I:MHMMHHHHHHHHHMHV:':H:WM
+ENTER
+STRING       :: . :.::IIHHHHHHMMHHHHV  .ABA.:.:IMHMHMMMHMHHHHV:'. .IHWW
+ENTER
+STRING       '.  ..:..:.:IHHHHHMMHV" .AVMHMA.:.'VHMMMMHHHHHV:' .  :IHWV
+ENTER
+STRING        :.  .:...:".:.:TPP"   .AVMMHMMA.:. "VMMHHHP.:... .. :IVAI
+ENTER
+STRING       .:.   '... .:"'   .   ..HMMMHMMMA::. ."VHHI:::....  .:IHW'
+ENTER
+STRING       ...  .  . ..:IIPPIH: ..HMMMI.MMMV:I:.  .:ILLH:.. ...:I:IM
+ENTER
+STRING     : .   .'"' .:.V". .. .  :HMMM:IMMMI::I. ..:HHIIPPHI::'.P:HM.
+ENTER
+STRING     :.  .  .  .. ..:.. .    :AMMM IMMMM..:...:IV":T::I::.".:IHIMA
+ENTER
+STRING     'V:.. .. . .. .  .  .   'VMMV..VMMV :....:V:.:..:....::IHHHMH
+ENTER
+STRING       "IHH:.II:.. .:. .  . . . " :HB"" . . ..PI:.::.:::..:IHHMMV"
+ENTER
+STRING        :IP""HHII:.  .  .    . . .'V:. . . ..:IH:.:.::IHIHHMMMMM"
+ENTER
+STRING        :V:. VIMA:I..  .     .  . .. . .  .:.I:I:..:IHHHHMMHHMMM
+ENTER
+STRING        :"VI:.VWMA::. .:      .   .. .:. ..:.I::.:IVHHHMMMHMMMMI
+ENTER
+STRING        :."VIIHHMMA:.  .   .   .:  .:.. . .:.II:I:AMMMMMMHMMMMMI
+ENTER
+STRING        :..VIHIHMMMI...::.,:.,:!"I:!"I!"I!"V:AI:VAMMMMMMHMMMMMM'
+ENTER
+STRING        ':.:HIHIMHHA:"!!"I.:AXXXVVXXXXXXXA:."HPHIMMMMHHMHMMMMMV
+ENTER
+STRING          V:H:I:MA:W'I :AXXXIXII:IIIISSSSSSXXA.I.VMMMHMHMMMMMM
+ENTER
+STRING            'I::IVA ASSSSXSSSSBBSBMBSSSSSSBBMMMBS.VVMMHIMM'"'
+ENTER
+STRING             I:: VPAIMSSSSSSSSSBSSSMMBSSSBBMMMMXXI:MMHIMMI
+ENTER
+STRING            .I::. "H:XIIXBBMMMMMMMMMMMMMMMMMBXIXXMMPHIIMM'
+ENTER
+STRING            :::I.  ':XSSXXIIIIXSSBMBSSXXXIIIXXSMMAMI:.IMM
+ENTER
+STRING            :::I:.  .VSSSSSISISISSSBII:ISSSSBMMB:MI:..:MM
+ENTER
+STRING            ::.I:.  ':"SSSSSSSISISSXIIXSSSSBMMB:AHI:..MMM.
+ENTER
+STRING            ::.I:. . ..:"BBSSSSSSSSSSSSBBBMMMB:AHHI::.HMMI
+ENTER
+STRING            :..::.  . ..::":BBBBBSSBBBMMMB:MMMMHHII::IHHMI
+ENTER
+STRING            ':.I:... ....:IHHHHHMMMMMMMMMMMMMMMHHIIIIHMMV"
+ENTER
+STRING              "V:. ..:...:.IHHHMMMMMMMMMMMMMMMMHHHMHHMHP'
+ENTER
+STRING               ':. .:::.:.::III::IHHHHMMMMMHMHMMHHHHM"
+ENTER
+STRING                 "::....::.:::..:..::IIIIIHHHHMMMHHMV"
+ENTER
+STRING                   "::.::.. .. .  ...:::IIHHMMMMHMV"
+ENTER
+STRING                     "V::... . .I::IHHMMV"'
+ENTER
+STRING                       '"VHVHHHAHHHHMMV:"'
+ENTER
+STRING <3 Pancho
+

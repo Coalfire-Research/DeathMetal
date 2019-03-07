@@ -1,0 +1,30 @@
+all:
+	1. ensure that ssl works accross all tools
+	2. make interfaces easier to use
+
+dm_nathan:
+	1. impl rmcp response (dis/en)abling
+	2. impl amt firewall rule setting
+	3. impl wifi interface configuring
+	4. impl ipv6 configuring
+	5. impl reverse connection configuring
+	6. refactor into charles so other tools can use features as needed
+dm_toki:
+	1. finish ide-r impl
+	2. reverse  usb-r proto
+	3. impl usb-r proto
+
+dm_pickles:
+	1. add more duckyscripts
+
+dm_rockso:
+	1. add a per-host wait period instead of just waiting 5 seconds like a fool
+	2. fix the async impl
+	3. pretty much just make it nice 
+
+dm_murderface:
+	1. ease usb / other provisioning provile generation
+	2. impl rcs server for possible host-base-provisioning-in-acm-mode-hotpotatoesque-kung-fu
+
+todo.txt:
+	1. add to this, maybe flesh out details

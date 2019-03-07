@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+import requests
+import hashlib
+import random
+import string
+
+# use charles instead
+def hex_md5(data):
+    return hashlib.md5(data.encode('utf-8')).hexdigest()
+
+class amt_transport:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+
+    def send(self, message, headers=None):
+        pass
+
+class amt_transport_http(amt_transport):
+    def __init__(self, host, port):
+        amt_transport.__init__(self, host, port)
+        self._session = requests.Session()
+
+    def send(self, message, headers=None):
+        return self._session.post("http://{}:{}/wsman".format(self.host, self.port), data = message, headers=headers)
+
+class amt_transport_https(amt_transport):
+    def __init__(self, host, port):
+        amt_transport.__init__(self, host, port)
+        self._session = requests.Session()
+
+    def send(self, message, headers=None):
+        return self._session.post("https://{}:{}/wsman".format(self.host, self.port), data = message, headers=headers)
+
+class amt_session:
+    def __init__(self, transport):
+        self.transport = transport
+        # These are pulled from the server response to auth and then re-used throughout the entire session
+        self.nonce = None
+        self.qop = None # would probably be safe to just but "auth" in here
+        self.digest = None
+        self.cnonce = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        self.count_nonce = 1
+
+        self.message_auth_init = """
+<Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope">
+  <Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/Enumerate</a:Action>
+    <a:To>/wsman</a:To>
+    <w:ResourceURI>http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_SoftwareIdentity</w:ResourceURI>
+    <a:MessageID>{}</a:MessageID>
+    <a:ReplyTo>
+      <a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+    </a:ReplyTo>
+    <w:OperationTimeout>PT60S</w:OperationTimeout>
+  </Header>
+  <Body>
+    <Enumerate xmlns="http://schemas.xmlsoap.org/ws/2004/09/enumeration"></Enumerate>
+  </Body>
+</Envelope>
+"""
+# TODO: I forget where I was going with this..
+#        self.message_kvm_pulse = """
+#<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Get</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://intel.com/wbem/wscim/1/ips-schema/1/IPS_ScreenSettingData</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60S</w:OperationTimeout></Header><Body /></Envelope>"""
+#        pass
+
+#{'WWW-Authenticate': 'Digest realm="Digest:275F0000000000000000000000000000", nonce="vvMqAAUFAACttd58Df9lnEg4nmuN88nk",stale="false",qop="auth"', 'Content-Type': 'text/html', 'Server': 'Intel(R) Active Management Technology 9.5.14', 'Content-Length': '689', 'Connection': 'close'}
+
+    def enable_redir(self):
+        message = '<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Put</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_RedirectionService</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60.000S</w:OperationTimeout></Header><Body><r:AMT_RedirectionService xmlns:r="http://intel.com/wbem/wscim/1/amt-schema/1/AMT_RedirectionService"><r:CreationClassName>AMT_RedirectionService</r:CreationClassName><r:ElementName>Intel(r) AMT Redirection Service</r:ElementName><r:EnabledState>32771</r:EnabledState><r:ListenerEnabled>true</r:ListenerEnabled><r:Name>Intel(r) AMT Redirection Service</r:Name><r:SystemCreationClassName>CIM_ComputerSystem</r:SystemCreationClassName><r:SystemName>Intel(r) AMT</r:SystemName></r:AMT_RedirectionService></Body></Envelope>'.format(self.count_nonce+1) # ehh.. make this not a thing
+        rv = self.send_message(message)
+        print(rv.text)
+        pass
+
+    def disable_redir(self):
+        self.send(self.message_disable_redir)
+        pass
+
+    def enable_kvm(self):
+        message = '<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_KVMRedirectionSAP/RequestStateChange</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_KVMRedirectionSAP</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60S</w:OperationTimeout></Header><Body><r:RequestStateChange_INPUT xmlns:r="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_KVMRedirectionSAP"><r:RequestedState>2</r:RequestedState></r:RequestStateChange_INPUT></Body></Envelope>'.format(self.count_nonce+1) # fix this
+        rv = self.send_message(message)
+        print(rv.text)
+
+    def disable_kvm(self):
+        self.send(self.message_disable_kvm)
+        pass
+
+    def clear_event_log(self):
+        message = '<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_MessageLog/ClearLog</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_MessageLog</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60S</w:OperationTimeout></Header><Body><r:ClearLog_INPUT xmlns:r="http://intel.com/wbem/wscim/1/amt-schema/1/AMT_MessageLog"></r:ClearLog_INPUT></Body></Envelope>'.format(self.count_nonce+1)
+        rv = self.send_message(message)
+        print(rv.text)
+
+    def clear_audit_log(self):
+        lock_message = '<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_AuditLog/SetAuditLock</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_AuditLog</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60S</w:OperationTimeout></Header><Body><r:SetAuditLock_INPUT xmlns:r="http://intel.com/wbem/wscim/1/amt-schema/1/AMT_AuditLog"><r:LockTimeoutInSeconds>1</r:LockTimeoutInSeconds><r:Flag>{}</r:Flag></r:SetAuditLock_INPUT></Body></Envelope>'
+
+        message = lock_message.format(self.count_nonce+1, 0)
+        self.send_message(message)
+
+        message = '<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_AuditLog/ClearLog</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://intel.com/wbem/wscim/1/amt-schema/1/AMT_AuditLog</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60S</w:OperationTimeout></Header><Body><r:ClearLog_INPUT xmlns:r="http://intel.com/wbem/wscim/1/amt-schema/1/AMT_AuditLog"></r:ClearLog_INPUT></Body></Envelope>'.format(self.count_nonce+1)
+        self.send_message(message)
+
+        message = lock_message.format(self.count_nonce+1, 1)
+        self.send_message(message)
+
+    def disable_consent(self):
+        message = '<?xml version="1.0" encoding="utf-8"?><Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://www.w3.org/2003/05/soap-envelope" ><Header><a:Action>http://schemas.xmlsoap.org/ws/2004/09/transfer/Put</a:Action><a:To>/wsman</a:To><w:ResourceURI>http://intel.com/wbem/wscim/1/ips-schema/1/IPS_OptInService</w:ResourceURI><a:MessageID>{}</a:MessageID><a:ReplyTo><a:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address></a:ReplyTo><w:OperationTimeout>PT60.000S</w:OperationTimeout></Header><Body><r:IPS_OptInService xmlns:r="http://intel.com/wbem/wscim/1/ips-schema/1/IPS_OptInService"><r:CanModifyOptInPolicy>1</r:CanModifyOptInPolicy><r:CreationClassName>IPS_OptInService</r:CreationClassName><r:ElementName>Intel(r) AMT OptIn Service</r:ElementName><r:Name>Intel(r) AMT OptIn Service</r:Name><r:OptInCodeTimeout>120</r:OptInCodeTimeout><r:OptInDisplayTimeout>300</r:OptInDisplayTimeout><r:OptInRequired>0</r:OptInRequired><r:OptInState>0</r:OptInState><r:SystemCreationClassName>CIM_ComputerSystem</r:SystemCreationClassName><r:SystemName>Intel(r) AMT</r:SystemName></r:IPS_OptInService></Body></Envelope>'.format(self.count_nonce+1)
+        self.send_message(message)
+
+# In theory.. this will disable secure boot for the next ide-r session (at boot time)
+    def disable_secure_boot(self):
+        message = ''
+
+    def calc_response(self):
+        p1 = self.username + ':' + self.realm + ':' + self.password
+        p2 = self.nonce + ':' +  str(self.count_nonce) + ':' + self.cnonce + ':' + self.qop
+        p3 = 'POST' + ':' + '/wsman'
+        cr = hex_md5(hex_md5(p1) + ':' + p2 + ':' + hex_md5(p3)) 
+        return cr
+
+    def gen_auth_header(self):
+        cr = self.calc_response()
+        headers = {'Authorization': 'Digest username="{}",realm="{}",nonce="{}",uri="{}",qop="{}",response="{}",nc="{}",cnonce="{}"'.format(self.username, self.realm, self.nonce, '/wsman', self.qop, cr, self.count_nonce, self.cnonce)}
+        return headers
+
+    def auth(self, username, password):
+        self.count_nonce = 0
+        self.username = username
+        self.password = password
+       
+        rv = self.transport.send(self.message_auth_init.format(str(self.count_nonce))) # message id seems consistent with nonce counter
+        self.count_nonce += 1
+        
+        if 'WWW-Authenticate' not in rv.headers:
+            raise Exception("auth", "missing authentication blob in response")
+
+        # make the data a bit more uniform and easy to work with and then stuff it in a map
+        auth_blob = rv.headers['WWW-Authenticate']
+        auth_parts = [x.lstrip() for x in auth_blob.split(',')]
+        
+        auth_map = {}
+        for x in auth_parts:
+            l,r=x.split('=')
+            auth_map[l]=r.translate({ord(c): None for c in '"'})
+        
+        self.nonce  = auth_map['nonce']
+        self.qop    = auth_map['qop']
+        stale       = auth_map['stale'] # Not sure at the moment... maybe demands a refresh of the session auth?
+        self.realm  = auth_map['Digest realm']
+
+        headers = self.gen_auth_header()
+
+        rv = self.transport.send(self.message_auth_init.format(self.count_nonce), headers=headers)
+        self.count_nonce += 1
+        if "Log on failed." in rv.text:
+            return False
+
+        return True
+
+    def send_message(self, message):
+        self.count_nonce += 1
+        # TODO: patch up the MessageID in message to reflect count_nonce increment..
+        rv = self.transport.send(message, headers=self.gen_auth_header())
+        return rv
+
+c = amt_session(amt_transport_http("10.1.0.83", "16992"))
+print(c.auth("admin", "abcD123!"))
+c.enable_redir()
+c.enable_kvm()
+c.disable_consent()
+c.clear_audit_log()
+c.clear_event_log()

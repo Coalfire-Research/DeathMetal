@@ -1,0 +1,498 @@
+#!/usr/bin/env python3
+import os
+from charles import *
+
+# *Major thanks* to https://senseless.info/ for their c impl - this saved me a ton of time!
+# I fixed a few bugs, added support for multi-session TOCs, and implemented it in python.
+# TODO: Does not yet boot arbitrary ISOs - I think I gotta enable mode_sense_10
+
+DEV_TYPE_FLOPPY = 0xa0
+DEV_TYPE_CD     = 0xb0
+
+DEV_MODE_NONE = b'\x00'
+DEV_MODE_RO   = b'\x01'
+DEV_MODE_RW   = b'\x02'
+
+RESET_NOTIFY = 3
+
+# SCSI Commands - https://en.wikipedia.org/wiki/SCSI_command
+SCSI_TEST_UNIT_READY               = 0x00
+SCSI_READ_6                        = 0x08
+SCSI_WRITE_6                       = 0x0a
+SCSI_MODE_SELECT_6                 = 0x15
+SCSI_MODE_SENSE_6                  = 0x1a
+SCSI_ALLOW_MEDIUM_REMOVAL          = 0x1e
+SCSI_READ_CAPACITY                 = 0x25
+SCSI_READ_10                       = 0x28
+SCSI_WRITE_10                      = 0x2a
+SCSI_READ_TOC                      = 0x43
+SCSI_GET_CONFIGURATION             = 0x46
+SCSI_GET_EVENT_STATUS_NOTIFICATION = 0x4a
+SCSI_READ_DISC_INFO                = 0x51
+SCSI_MODE_SELECT_10                = 0x55
+SCSI_MODE_SENSE_10                 = 0x5a
+SCSI_UNKNOWN                       = 0x35
+
+# Things the client sends
+IDER_OPEN_SESSION  = 0x40
+IDER_CLOSE_SESSION = 0x42
+IDER_PING_PONG     = 0x44
+IDER_STATUS_NOTIFY = 0x47
+IDER_STATUS_DATA   = 0x48
+IDER_HEARTBEAT     = 0x4b
+IDER_SCSI_SENSE    = 0x51
+IDER_SCSI_CHUNK    = 0x52
+IDER_SCSI_READ     = 0x54
+
+IDER_REGS_AVAIL   = 0x01
+IDER_REGS_STATUS  = 0x02
+IDER_REGS_TOGGLE  = 0x03
+IDER_REGS_SUCCESS = 0x01
+
+IDER_BIT_PRI_AVAIL = 0x01
+IDER_BIT_SEC_AVAIL = 0x02
+
+# Things the server sends
+IDER_OPEN_SESSION_REPLY        = 0x41
+IDER_CLOSE_SESSION_REPLY       = 0x43
+IDER_PING_PONG_REPLY           = 0x45
+IDER_STATUS_NOTIFICATION_REPLY = 0x46
+IDER_STATUS_DATA_REPLY         = 0x49
+IDER_SCSI_ABORT                = 0x4a
+IDER_HEARTBEAT_REPLY           = 0x4b # same as IDER_HEARTBEAT
+IDER_SCSI_CMD                  = 0x50
+IDER_SCSI_WRITE                = 0x53
+
+# TODO: Pull sensible defaults out of ider project
+DEFAULT_RX_TIMEOUT   = 30000
+DEFAULT_TX_TIMEOUT   = 0
+DEFAULT_VERSION_LOW  = 5
+DEFAULT_VERSION_HIGH = 9
+DEFAULT_HEARTBEAT    = 20000
+
+# holds session information which influences behavior in the future
+class SessionData():
+    def __init__(self, major, minor, fwmajor, fwminor, readbfr, writebfr, proto, iana, length, data):
+        self.major = major
+        self.minor = minor
+        self.fwmajor = fwmajor
+        self.fwminor = fwminor
+        self.readbfr = readbfr
+        self.writebfr = writebfr
+        self.proto = proto
+        self.iana = iana
+        self.length = length
+        self.data = data
+
+    @classmethod
+    def from_packet(cls, packet):
+        p = packet[8:]
+        major    = p[0]
+        minor    = p[1]
+        fwmajor  = p[2]
+        fwminor  = p[3]
+        readbfr  = p[9]  << 8 | p[8]
+        writebfr = p[11] << 8 | p[10]
+        proto    = p[13]
+        
+        iana = p[20] << 8 | p[19]
+        iana = iana  << 8 | p[18]
+        iana = iana  << 8 | p[17]
+        
+        length = p[21]
+
+        rv = cls(major, minor, fwmajor, fwminor, readbfr, writebfr, proto, iana, length, 0)
+        return(rv)
+
+# Abstracts sending certain kinds of commands to the socket
+# Also, processes incoming packets and sends relevant data to callbacks
+class IderProto():
+    def __init__(self, socket):
+        self._sock = socket
+        self._sequence_number = 0
+        self._version = 1 
+
+    def start(self,
+            rx_timeout=DEFAULT_RX_TIMEOUT,
+            tx_timeout=DEFAULT_TX_TIMEOUT,
+            heartbeat=DEFAULT_HEARTBEAT):
+
+        data =  itobl(rx_timeout, 2)
+        data += itobl(tx_timeout, 2)
+        data += itobl(heartbeat,  2)
+        data += itobl(self._version,    4)
+
+        self.send(IDER_OPEN_SESSION, data) 
+
+    def stop(self):
+        self.send(IDER_CLOSE_SESSION, b'')
+
+    def send(self, code, data, complete = False, hack = False):
+        sendbuf = itobl(code, 4)
+        sendbuf = bytearray(sendbuf)
+        if complete == True:
+            sendbuf[3] = 0x02
+
+        if hack == True:
+            sendbuf[3] = 0x03
+        
+        sendbuf += itobl(self._sequence_number, 4) 
+        sendbuf += data
+
+        self._sock.sendall(sendbuf)
+        self._sequence_number += 1
+
+    def recv(self, handler):
+        data = self._sock.recv(1024)
+        handler(data)
+
+class SCSI():
+    def __init__(self, isopath):
+        self._scsistate = [False for x in range(0, 10)]
+        self._sense_error = False
+        self._sense = 0
+        self._iso = open(isopath, 'rb')
+        self._scsistate[8] == True
+        self._blocks = os.stat(isopath).st_size >> 11 
+
+    def conf(self, session_data):
+        self._session_data = session_data
+
+    def on_test_unit_ready(self, dev, data, send):
+        if self._scsistate[8] and not self._scsistate[2]:
+                    print('gonna say the drive is ready!')
+        else:
+            pass
+   
+            resp = bytearray(31-8)
+            if self._sense_error == False:
+                resp[12] = 0xc5 # no error
+                resp[14] = 0x03
+                resp[18] = 0xb0
+                resp[19] = 0x50
+        #    else
+        #        resp[12] = b'\x87'
+        #        resp[13] = self._sense << 4
+        #        resp[16] = b'\x51'
+        #        resp[17] = self._sense
+        #        resp[18] = self._asc
+        #        resp[19] = self._asq
+    
+        #    resp[14] = b'\x03'
+        #    resp[15] = DEV_TYPE_CD
+        #                    
+        #    
+    
+        send(IDER_SCSI_SENSE, resp, complete=True) 
+
+    def on_unhandled(self, dev, data, send):
+        raise('unhandled scsi opcode')
+
+    def on_noimpl(self, dev, data, send):
+        sense = 0x05
+        asc = 0x20
+        asq = 0x00
+
+        resp = bytearray(31-8)
+        resp[12] = 0x87
+        resp[13] = sense << 4
+        resp[14] = 0x03
+        resp[18] = 0xb0
+        resp[19] = 0x51
+        resp[20] = sense
+        resp[21] = asc
+        resp[22] = asq
+
+        send(IDER_SCSI_SENSE, resp, complete=True) 
+        print('got a scsi command I think we can safely ignore')
+    
+    def on_read_capacity(self, dev, data, send):
+        resp = bytearray(34)
+        resp[1]=8
+        resp[2]=0
+        resp[4]=0xb5
+        resp[6]=0x02
+        resp[8]=0x08
+        resp[9]=0
+        
+        resp[10]=0xb0
+
+        resp[11]=0x58
+        # todo: handle incomplete?
+        resp[12]=0x85
+        resp[14]=0x03
+        resp[18]=0xb0
+        resp[19]=0x50
+        
+        length = self._blocks-1
+        resp[26]=length>>24 & 0xff
+        resp[27]=length>>16 & 0xff
+        resp[28]=length>>8 & 0xff
+        resp[29]=length & 0xff
+        resp[30]=0
+        resp[31]=0
+        resp[32]=0x08 # for cd?
+        resp[33]=0	
+
+        send(IDER_SCSI_READ, resp, complete=True)	
+
+    def on_read_10(self, dev, data, send):
+        flag = data[1] # I think this flag is important
+        cdb = data[8:]
+        lba = cdb[2]
+        lba = lba << 8
+        lba = lba | cdb[3]
+        lba = lba << 8
+        lba = lba | cdb[4]
+        lba = lba << 8
+        lba = lba | cdb[5]
+
+        lba = lba << 11
+
+        length = cdb[7]
+        length = length << 8
+        length = length | cdb[8]
+        length = length << 11
+
+        self._iso.seek(lba)
+        readbfr = self._session_data.readbfr
+
+        toread = length
+        complete = False
+
+        print(str(flag))
+        print(data)
+
+        while toread:
+            if toread > readbfr:
+                complete = False
+                count = readbfr
+            else:
+                complete = True
+                count = toread
+           
+            resp = bytearray(34-8)
+            resp[1]=count & 0xff
+            resp[2]=(count >> 8) & 0xff
+            
+            #resp[4]=0xb5
+            resp[4]=0xb4
+            resp[6]=0x02
+            #resp[9]=(count >> 8) & 0xff
+            resp[10]=0xb0
+            resp[11]=0x58
+            # todo: handle incomplete?
+
+            if complete == True:
+                resp[12]=0x85
+                resp[14]=0x03
+                resp[18]=0xb0
+                resp[19]=0x50
+
+            resp = resp + self._iso.read(count) # i forget why - 8
+            send(IDER_SCSI_READ, resp, complete = complete, hack = True)
+            toread -= count
+        print('done sending read')
+
+    def on_read_toc(self, dev, data, send):
+        cdb = data[8:]
+        
+        if cdb[2] or cdb[6] or cdb[9]:
+            # this is a hard coded toc, it seems to work - todo: compute it properly
+            resp = b'\x00\x0c\x00\x00\xb5\x00\x02\x00\x0c\x00\xb0\x58\x85\x00\x03\x00\x00\x00\xb0\x50\x00\x00\x00\x00\x00\x00\x00\x0a\x01\x01\x00\x14\x01\x00\x00\x00\x00\x00'
+            send(IDER_SCSI_READ, resp, complete=True)	
+            return
+            
+# 000004E3  54 00 00 02 18 00 00 00  00 14 00 00 b5 00 02 00   T....... ........
+# 000004F3  14 00 b0 58 85 00 03 00  00 00 b0 50 00 00 00 00   ...X.... ...P....
+# 00000503  00 00 00 12 01 01 00 14  01 00 00 00 02 00 00 14   ........ ........
+# 00000513  aa 00 00 d3 3b 0a                                  ....;.
+
+        p = bytearray(12 + 8)
+        p[0]=0x00
+        p[1]=0x12
+        p[2]=0x01
+        p[3]=0x01
+        p[4]=0x00
+        p[5]=0x14
+        p[6]=0x01
+        p[7]=0x00
+        p[8]=0x00
+        p[9]=0x00
+        p[10]=0x02
+        p[11]=0x00
+        p[12]=0x00
+        p[13]=0x14
+        p[14]=0xaa
+        p[15]=0x00
+        p[16]=0x00
+        p[17]=0xd3
+        p[18]=0x3b
+        p[19]=0x0a
+        
+        resp = bytearray(34-8)
+        resp[1]=0x14
+        resp[4]=0xb5
+        resp[6]=0x02
+        resp[8]=0x14
+
+        resp[10]=0xb0
+        resp[11]=0x58
+        # todo: handle incomplete?
+        
+        resp[12]=0x85
+        resp[14]=0x03
+        resp[18]=0xb0
+        resp[19]=0x50
+        
+        resp += p
+        send(IDER_SCSI_READ, resp, complete=True)	
+        
+        pass
+
+    def on_nomedium(self, dev, data, send):
+        sense = 0x02
+        asc = 0x3a
+        asq = 0x00
+
+        resp = bytearray(31-8)
+        resp[12] = 0x87
+        resp[13] = sense << 4
+        resp[14] = 0x03
+        resp[18] = 0xb0
+        resp[19] = 0x51
+        resp[20] = sense
+        resp[21] = asc
+        resp[22] = asq
+
+        send(IDER_SCSI_SENSE, resp, complete=True) 
+
+    def handle(self, dev, data, send):
+        cdb = data[8:]
+        opcode = cdb[0]
+      
+        print('scsi opcode is: ' + hex(opcode))
+
+        if dev != DEV_TYPE_CD:
+            self.on_nomedium(dev, data, send) # we only do cd/dvd right now
+            return
+
+        handlers = {
+            SCSI_TEST_UNIT_READY               : self.on_test_unit_ready,
+            SCSI_GET_CONFIGURATION             : self.on_noimpl,
+            SCSI_READ_DISC_INFO                : self.on_noimpl,
+            SCSI_READ_TOC                      : self.on_read_toc,
+            SCSI_READ_CAPACITY                 : self.on_read_capacity,
+            SCSI_ALLOW_MEDIUM_REMOVAL          : self.on_noimpl,
+            SCSI_READ_10                       : self.on_read_10,
+            SCSI_GET_EVENT_STATUS_NOTIFICATION : self.on_noimpl,
+            SCSI_UNKNOWN                       : self.on_noimpl,
+            SCSI_MODE_SENSE_10                 : self.on_noimpl,
+        }
+
+        handlers.get(opcode, self.on_unhandled)(dev, data, send)
+
+# Implements an interruptable state machine abstracting an IDER task
+class IderSession():
+    def __init__(self, socket, isopath):
+        self._proto = IderProto(socket)
+        self._scsi = SCSI(isopath)
+
+    def loop(self):
+        self._proto.start()
+        while(True): # Todo: add a stop condition
+            self._proto.recv(self._on_read)
+
+    def _on_read(self, data):
+        if len(data) == 0:
+            return
+
+        opcode = (data[0])
+        print(hex(opcode))
+
+        handlers = {
+            IDER_OPEN_SESSION_REPLY        : self.on_ider_open_session,
+            IDER_STATUS_DATA_REPLY         : self.on_ider_status_data_reply,
+            IDER_STATUS_NOTIFICATION_REPLY : self.on_ider_status_notify,
+            IDER_HEARTBEAT                 : self.on_ider_heartbeat,
+            IDER_SCSI_CMD                  : self.on_scsi_cmd
+        }
+
+        handlers.get(opcode, self.on_unhandled)(data)
+
+    def on_ider_status_notify(self, data):
+        print('status notify')
+        d = data[8:]
+        self._proto.send(IDER_STATUS_NOTIFY, b'')       
+        if d == RESET_NOTIFY:
+            print('huh..')
+
+    def on_ider_heartbeat(self, data):
+        self._proto.send(IDER_HEARTBEAT, b'') 
+        print('got heartbeat')
+
+    def on_ider_status_data_reply(self, data):
+        print('got status data reply')
+        d = data[8:]
+        dtype = d[0]
+        value = d[4] << 8 | d[3]
+        value = value << 8 | d[2]
+        value = value << 8 | d[1]
+        print('type is: ' + str(dtype))
+        print('value is: ' + str(value)) 
+
+        if dtype == IDER_REGS_AVAIL:
+            print('ider_regs_avail')
+            if value & IDER_BIT_PRI_AVAIL:
+                print('bit pri_avail')
+        
+        if dtype == IDER_REGS_TOGGLE:
+            print('REGS_TOGGLE')
+            if value == IDER_REGS_SUCCESS:
+                print('server says it toggled registers ok')
+            else:
+                print('server says there was an error setting registers')
+
+    def on_scsi_cmd(self, data):
+        d = data[8:]
+        dev = d[6]
+        print('dev is: ' + str(dev))
+        print('got scsi cmd')
+        self._scsi.handle(dev, d, self._proto.send)
+
+    def on_ider_open_session(self, data):
+        print('got open session response')
+        self._session_data = SessionData.from_packet(data)
+        self._scsi.conf(self._session_data)
+        # TODO: figure out what these bytes are
+        print('i think im setting a register...')
+        self._proto.send(IDER_STATUS_DATA, b'\03\x11\x00\x00\x00') # gracefull
+        #self._proto.send(IDER_STATUS_DATA, b'\03\x19\x00\x00\x00') # immediately
+
+    def on_unhandled(self, data):
+        print('error - unhandled opcode')
+        exit(1)
+
+    def stop(self):
+        pass
+
+    def attach_floppy(self, path):
+        pass
+
+    def attach_cd(self, path):
+        pass
+   
+    def unattach_floppy(self, path):
+        pass
+
+    def unattach_cd(self, path):
+        pass
+
+host = "10.43.43.17"
+port = "16994"
+username = "admin"
+password = "abcD123!"
+isopath = '/tmp/ubuntu.iso'
+sock = create_redir_session(host, port, username, password, "IDER")
+ider = IderSession(sock, isopath)
+ider.loop()

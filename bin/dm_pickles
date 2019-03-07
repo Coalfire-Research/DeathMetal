@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+#
+###############################################################################
+# Written by Victor Teissler (pancho)                                         #
+# BIG thanks to Coalfire for allowing me to work on this and paying me for it #
+#              (Protip: Put #vicsfault on your application)                   #
+###############################################################################
+
+# https://www.youtube.com/watch?v=fQFJjfZwtyI
+
+import socket
+import ssl
+#import binascii
+#import hashlib
+#import random
+#import string
+import time
+import argparse
+
+from charles import *
+
+# Gets constructed around an already authenticated socket
+# Then you feed it a duckyscript via eval_script and cackle under your breath
+# TODO (12_17_18-pancho) implement control, alt, context, and other misc buttons
+# TODO (12_17_18-pancho) consider renaming if language is extended to support vnc copy/paste
+class duckyscript:
+    KEY_DOWN = b'\x01'
+    KEY_UP   = b'\x00'
+
+    def __init__(self, sock, disp=False):
+        self.last_line = '' # for REPEAT
+        self.sock = sock
+        self.safe_wait = 0.0042 # empirically found to not suck in observed settings
+        self.default_delay = self.safe_wait
+        
+        # I specialize in bird law
+        
+        self.op_lookup = {
+            'ALT'           : self.do_alt,
+            'APP'           : self.do_menu,
+            'BREAK'         : self.do_break,
+            'CAPSLOCK'      : self.do_capslock,
+            'CONTROL'       : self.do_control,
+            'CTRL'          : self.do_control,
+            'DEFAULT_DELAY' : self.do_defaultdelay,
+            'DEFAULTDELAY'  : self.do_defaultdelay,
+            'DELAY'         : self.do_delay,
+            'DELETE'        : self.do_delete,
+            'DOWNARROW'     : self.do_downarrow,
+            'DOWN'          : self.do_downarrow,
+            'END'           : self.do_end,
+            'ENTER'         : self.do_enter,
+            'ESCAPE'        : self.do_esc,
+            'ESC'           : self.do_esc,
+            'GUI'           : self.do_windows,
+            'HOME'          : self.do_home,
+            'INSERT'        : self.do_insert,
+            'LEFTARROW'     : self.do_leftarrow,
+            'LEFT'          : self.do_leftarrow,
+            'MENU'          : self.do_menu,
+            'NUMLOCK'       : self.do_numlock,
+            'PAGEDOWN'      : self.do_pagedown,
+            'PAGEUP'        : self.do_pageup,
+            'PAUSE'         : self.do_break,
+            'PRINTSCREEN'   : self.do_printscreen,
+            'REM'           : self.do_rem,
+            'REPEAT'        : self.do_repeat,
+            'RIGHTARROW'    : self.do_rightarrow,
+            'RIGHT'         : self.do_rightarrow,
+            'SCROLLLOCK'    : self.do_scrolllock,
+            'SHIFT'         : self.do_shift,
+            'SLEEP'         : self.do_sleep,
+            'SPACE'         : self.do_space,
+            'STRING'        : self.do_string,
+            'TAB'           : self.do_tab,
+            'UPARROW'       : self.do_uparrow,
+            'UP'            : self.do_uparrow,
+            'WINDOWS'       : self.do_windows,
+        }
+        if disp == True:
+            self.do_enter('') # this is a workaround for multi-desktop displays that first prompt for the chosen one
+            time.sleep(1.0)
+
+    def eval_script(self, script):
+        for line in script.split('\n'):
+            self.eval_line(line)
+   
+    def eval_line(self, line):
+            chunks = line.split(' ')
+            op = chunks[0]
+
+            if op == '':
+                return
+            
+            if op not in self.op_lookup:
+                print('op "{}" not found'.format(chunks[0]))
+                return
+
+            print('cur line: {}'.format(line))
+            self.op_lookup[chunks[0]](line)
+            self.last_line = line
+
+    def get_arg(self, line):
+        return line.split(' ')[1].encode('utf-8') # first chunk is opcode
+
+    def do_rem(self, line):
+        pass
+
+    def do_defaultdelay(self, line): # or defaultdelay
+        self.default_delay = int(self.get_arg(line))/1000
+
+    def do_delay(self, line):
+        self.wait(int(self.get_arg(line))/1000)
+
+    def do_string(self, line):
+        for c in line[len('STRING')+1:]:
+            c = c.encode('utf-8')
+            self.pressb(c)
+
+    # TODO: restrict this to just what the lang spec permits
+    # Also: abstract this for re-use - other things like shift could probably use it
+    def do_windows(self, line): # or gui
+        self.sendb(self.KEY_DOWN, b'\xff\xe7')
+        arg = self.get_arg(line)
+        if len(arg) == 1: # if its one char its probably just a button press
+            self.pressb(arg)
+        else:
+            self.eval_line(arg.decode('utf-8')) # longer it might be an arrow
+        self.sendb(self.KEY_UP, b'\xff\xe7')
+
+# TODO (12_17_18-pancho) implement control, alt, context, and other misc buttons
+    def do_menu(self, line): # or app
+        pass
+
+# TODO (12_17_18-pancho) implement control, alt, context, and other misc buttons
+    def do_shift(self, line):
+        pass
+
+# TODO (12_17_18-pancho) implement control, alt, context, and other misc buttons
+    def do_alt(self, line):
+        pass
+
+# TODO (12_17_18-pancho) implement control, alt, context, and other misc buttons
+    def do_control(self, line): # or ctrl
+        self.sendb(self.KEY_DOWN, b'\xff\xe3')
+        self.pressb(self.get_arg(line))
+        self.sendb(self.KEY_UP, b'\xff\xe3')
+
+    def do_downarrow(self, line):
+        self.pressb(b'\xff\x54')
+
+    def do_uparrow(self, line):
+        self.pressb(b'\xff\x52')
+
+    def do_leftarrow(self, line):
+        self.pressb(b'\xff\x51')
+
+    def do_rightarrow(self, line):
+        self.pressb(b'\xff\x53')
+
+    def do_break(self, line): # or pause
+        self.pressb(b'\xff\x6b')
+
+    def do_capslock(self, line):
+        self.pressb(b'\xff\xe5')
+
+    def do_delete(self, line):
+        self.pressb(b'\xff\xff')
+
+    def do_end(self, line):
+        self.pressb(b'\xff\x57')
+    
+    def do_esc(self, line): # or escape
+        self.pressb(b'\xff\x1b')
+
+    def do_home(self, line):
+        self.pressb(b'\xff\x50')
+
+    def do_insert(self, line):
+        self.pressb(b'\xff\x63')
+
+    def do_numlock(self, line):
+        self.pressb(b'\xff\x7f')
+
+    def do_pageup(self, line):
+        self.pressb(b'\xff\x55')
+
+    def do_pagedown(self, line):
+        self.pressb(b'\xff\x56')
+
+    def do_printscreen(self, line):
+        self.pressb(b'\xfd\x1d')
+
+    def do_scrolllock(self, line):
+        self.pressb(b'\xff\x14')
+
+    def do_space(self, line):
+        self.pressb(b' ')
+
+    def do_tab(self, line):
+        self.pressb(b'\xff\x09')
+
+    def do_repeat(self, line):
+        for i in range(0, int(self.get_arg(line))):
+            self.eval_line(self.last_line)
+
+    def do_sleep(self, line):
+        time.sleep(int(self.get_arg(line))/1000)
+
+    def do_enter(self, line):
+        self.pressb(b'\xff\x0d')
+
+    # convenient convenience functions
+    def sendb(self, state, keycode):
+        self.send(b'\x04' + state + b'\x00\x00' + (b'\x00' * (4-len(keycode))) + keycode)
+
+    def pressb(self, keycode):
+        self.sendb(self.KEY_DOWN, keycode) # BEEP
+        self.sendb(self.KEY_UP, keycode)   # BOOP
+
+    def send(self, data):
+        self.sock.sendall(data)
+        self.wait(self.default_delay) 
+
+    def wait(self, dur=0):
+        if (dur < self.safe_wait):
+            dur = self.safe_wait # if we send stuff too fast, AMT KVM seems to break
+        time.sleep(dur)
+
+# creates a socket with an authenticated Intel VNC session downgraded to 003.008
+# TODO (12_17_18-pancho) Might be a rst in high-latency environments, keeping an eye on it
+def create_amt_vnc_session(host, port, username, password, SSL=False):
+    sock = create_redir_session(host, port, username, password, 'KVMR')
+
+    def send(data):
+        sock.sendall(data)
+
+    def recv(count=1024):
+        return sock.recv(count)
+
+    send(b'\x40\x00\x00\x00\x00\x00\x00\x00')
+    time.sleep(0.025) 
+    rv = recv()
+
+    # Thanks - https://tools.ietf.org/html/rfc6143
+    send(b'RFB 003.008\n') # downgrade to 003.008
+    rv = recv() # vnc gives us a \x02\x01\x80 which tells us the security available
+    
+    if rv != b'\x02\x01\x80':
+        print('test: {}'.format(rv))
+    
+    send(b'\x01') # we select 01 because it is no sec (we already authed this channel)
+    rv = recv(4)
+    if rv != b'\x00\x00\x00\x00':
+        print(rv)
+        print('server refused null auth, is this really amt?')
+        raise('weird', 'abhorent behaviour by server')
+
+    send(b'\x01') # sounds good homie 
+    rv = recv()
+
+    # send(b'\x02\x00\x00\x04\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x04\x44\xff\xff\xff\x21') # set encoding
+    #rv = recv()
+    #print(rv)
+
+   # send(b'\x00\x00\x00\x00\x08\x08\x00\x01\x00\x07\x00\x07\x00\x03\x05\x02\x00\x00\x00\x00') # set pixel format
+
+   # send(b'\x03\x01\x00\x00\x00\x00\x03\x20\x02\x58')
+
+    #    for i in range(0, 0x82):
+    #        rv = recv()
+    #print(rv)
+
+    # expecting
+    # 0000  05 56 03 00 10 10 00 01  00 1f 00 3f 00 1f 0b 05   .V...... ...?....
+    # 0010  00 00 00 00 00 00 00 10  49 6e 74 65 6c 28 72 29   ........ Intel(r)
+    # 0020  20 41 4d 54 20 4b 56 4d                             AMT KVM
+    #
+
+    time.sleep(1.5) # kinda sorta required (observed during tests)
+    return sock
+
+# arg parse and launch
+parser = argparse.ArgumentParser(description='Press some buttons')
+parser.add_argument('host', help='host')
+parser.add_argument('port', help='port')
+parser.add_argument('--disp', '-D', dest='disp', action='store_true', help='workaround multiple desktops (press enter and waits)')
+parser.add_argument('--ssl', '-s', dest='ssl', action='store_true')
+parser.add_argument('--user', '-u', default='admin', help='User - default is admin')
+parser.add_argument('--password', '-p', help='password')
+parser.add_argument('--duckyfile', '-d', help='duckyscript file')
+parser.set_defaults(ssl=False)
+args = parser.parse_args()
+
+# make a duckyscript session
+c = duckyscript(create_amt_vnc_session(args.host, args.port, args.user, args.password, SSL=args.ssl), disp=args.disp)
+
+# fire away
+c.eval_script(open(args.duckyfile, 'r').read()) # muahahah!

