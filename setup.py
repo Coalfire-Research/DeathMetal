@@ -11,6 +11,7 @@ setup(name="deathmetal",
       packages=['charles'],
       scripts=['bin/dm_pickles',
                'bin/dm_toki',
+               'bin/dm_nathan',
                'bin/dm_rockso'],
       install_requires=['hexdump'],
 )
