@@ -283,12 +283,12 @@ def create_amt_vnc_session(host, port, username, password, SSL=False):
 # arg parse and launch
 parser = argparse.ArgumentParser(description='Press some buttons')
 parser.add_argument('host', help='host')
-parser.add_argument('port', help='port')
+parser.add_argument('--port', '-P', default=16994, help='port')
 parser.add_argument('--disp', '-D', dest='disp', action='store_true', help='workaround multiple desktops (press enter and waits)')
 parser.add_argument('--ssl', '-s', dest='ssl', action='store_true')
 parser.add_argument('--user', '-u', default='admin', help='User - default is admin')
-parser.add_argument('--password', '-p', help='password')
-parser.add_argument('--duckyfile', '-d', help='duckyscript file')
+parser.add_argument('--password', '-p', help='password', required=True)
+parser.add_argument('--duckyfile', '-d', help='duckyscript file', required=True)
 parser.set_defaults(ssl=False)
 args = parser.parse_args()
 

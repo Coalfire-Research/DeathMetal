@@ -3,6 +3,7 @@ import requests
 import hashlib
 import random
 import string
+import argparse
 
 # use charles instead
 def hex_md5(data):
@@ -162,8 +163,17 @@ class amt_session:
         rv = self.transport.send(message, headers=self.gen_auth_header())
         return rv
 
-c = amt_session(amt_transport_http("10.1.0.83", "16992"))
-print(c.auth("admin", "abcD123!"))
+
+parser = argparse.ArgumentParser(description='Change some settings')
+parser.add_argument('host', help='host')
+parser.add_argument('port', default='16992', help='port')
+parser.add_argument('--ssl', '-s', dest='ssl', action='store_true')
+parser.add_argument('--user', '-u', default='admin', help='User - default is admin')
+parser.add_argument('--password', '-p', help='password')
+args = parser.parse_args()
+
+c = amt_session(amt_transport_http(args.host, args.port))
+print(c.auth(args.user, args.password))
 c.enable_redir()
 c.enable_kvm()
 c.disable_consent()
