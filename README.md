@@ -47,7 +47,7 @@ See also the list of [contributors](https://github.com/Coalfire-Research/DeathMe
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+This project is licensed under a modified MIT License - see the [LICENSE](LICENSE) file for details
 
 ## Acknowledgments
 
