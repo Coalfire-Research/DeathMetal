@@ -13,5 +13,5 @@ setup(name="deathmetal",
                'bin/dm_toki',
                'bin/dm_nathan',
                'bin/dm_rockso'],
-      install_requires=['hexdump'],
+      install_requires=['hexdump', 'requests'],
 )
